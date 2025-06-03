@@ -21,7 +21,7 @@ int main()
     }
     if (maxi > mini)
     {
-        cout<<"cc";
+     
         cout << ((maxi - 1) + (n - mini)-1);
     }
     else
