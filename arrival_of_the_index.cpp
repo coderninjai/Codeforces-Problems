@@ -13,7 +13,7 @@ int main()
             max_value = a;
             maxi = i;
         }
-        if (a < min_value)
+        if (a <= min_value)
         {
             min_value = a;
             mini = i;
@@ -21,7 +21,8 @@ int main()
     }
     if (maxi > mini)
     {
-        cout << (maxi - 1) + (n - mini) - 1;
+        cout<<"cc";
+        cout << ((maxi - 1) + (n - mini)-1);
     }
     else
     {
