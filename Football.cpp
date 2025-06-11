@@ -17,6 +17,9 @@ int main()
                 break;
             }
         }
+        else{
+            count=0;
+        }
     }
     if (count < 6)
     {
