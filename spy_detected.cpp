@@ -15,7 +15,7 @@ int main()
         {
             cin >> arr[i];
         }
-
+        
         if (arr[0] == arr[1])
             majority = arr[1];
         else
@@ -24,7 +24,7 @@ int main()
         for (int i = 0; i < a; i++)
         {
             if (arr[i] != majority)
-                cout << i+1 << endl;
+                cout << i << endl;
         }
     }
     return 0;
