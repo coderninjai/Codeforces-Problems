@@ -18,7 +18,7 @@ int main(){
     int num = 1;
     while (liked_numbers.size() < max_k) {
         if (num % 3 != 0 && num % 10 != 3) {
-            liked_numbers.push_back(num);
+            liked_numbers.push_back(num);   
         }
         num++;
     }
