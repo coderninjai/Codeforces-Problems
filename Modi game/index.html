@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Flying Modi: Full Screen Edition</title>
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background-color: #333;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        touch-action: none;
+    }
+
+    canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        background: linear-gradient(to bottom, #4fc3f7, #ffffff);
+    }
+
+    #ui-layer {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+
+    #score {
+        position: absolute;
+        top: 20px;
+        font-size: 60px;
+        font-weight: 900;
+        color: white;
+        text-shadow: 2px 2px 0 #000;
+        z-index: 10;
+    }
+
+    #start-screen, #game-over-screen {
+        background: rgba(0, 0, 0, 0.7);
+        padding: 20px;
+        border-radius: 15px;
+        text-align: center;
+        color: white;
+        pointer-events: auto;
+    }
+
+    button {
+        background: #ff9800;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        font-size: 18px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-top: 10px;
+        font-weight: bold;
+    }
+
+    button:hover { background: #e68900; }
+    
+    input[type="file"] { display: none; }
+
+    h1 { margin: 0 0 10px 0; font-size: 40px; text-transform: uppercase; }
+    p { font-size: 18px; }
+
+</style>
+</head>
+<body>
+
+    <audio id="bg-music" loop>
+        <source src="bgm.mp3" type="audio/mpeg">
+    </audio>
+
+    <audio id="die-sound">
+        <source src="die.mp3" type="audio/mpeg">
+    </audio>
+
+    <div id="ui-layer">
+        <div id="score">0</div>
+
+        <div id="start-screen">
+            <h1>Flying Modi</h1>
+            <p>Tap, Click, or Spacebar to Fly</p>
+            
+            <button onclick="document.getElementById('char-upload').click()">Change Character Image</button>
+            <input type="file" id="char-upload" accept="image/*" onchange="uploadCharacter(this)">
+            
+            <br><br>
+            <button onclick="startGame()" style="background:#4CAF50; font-size: 24px;">PLAY GAME</button>
+        </div>
+
+        <div id="game-over-screen" style="display: none;">
+            <h1>Game Over</h1>
+            <p id="final-score">Score: 0</p>
+            <button onclick="resetGame()">Try Again</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Audio References
+    const music = document.getElementById('bg-music');
+    const dieSound = document.getElementById('die-sound'); // Reference new audio
+    
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Game Variables ---
+    let frames = 0;
+    let score = 0;
+    let gameSpeed = 3;
+    let isRunning = false;
+    let isGameOver = false;
+
+    // --- The Character (Bird) ---
+    const bird = {
+        x: 50,
+        y: 150,
+        radius: 20,
+        velocity: 0,
+        gravity: 0.25,
+        jump: 6,
+        img: new Image(),
+        
+        draw: function() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            let rotation = Math.min(Math.PI / 4, Math.max(-Math.PI / 4, (this.velocity * 0.1)));
+            ctx.rotate(rotation);
+            ctx.drawImage(this.img, -25, -25, 50, 50); 
+            ctx.restore();
+        },
+        update: function() {
+            this.velocity += this.gravity;
+            this.y += this.velocity;
+
+            // Floor collision
+            if (this.y + 20 >= canvas.height) {
+                this.y = canvas.height - 20;
+                gameOver();
+            }
+            // Ceiling collision
+            if (this.y - 20 <= 0) {
+                this.y = 20;
+                this.velocity = 0;
+            }
+        },
+        flap: function() {
+            this.velocity = -this.jump;
+        }
+    };
+    
+    bird.img.src = "image.png"; 
+
+    // --- Pipes ---
+    const pipes = {
+        items: [],
+        width: 60,
+        gap: 200,
+        dx: 3,
+
+        draw: function() {
+            ctx.fillStyle = "#2ecc71"; 
+            ctx.strokeStyle = "#27ae60";
+            ctx.lineWidth = 3;
+
+            for (let i = 0; i < this.items.length; i++) {
+                let p = this.items[i];
+                
+                // Top Pipe
+                ctx.fillRect(p.x, 0, this.width, p.top);
+                ctx.strokeRect(p.x, 0, this.width, p.top);
+                
+                // Bottom Pipe
+                let bottomY = p.top + this.gap;
+                ctx.fillRect(p.x, bottomY, this.width, canvas.height - bottomY);
+                ctx.strokeRect(p.x, bottomY, this.width, canvas.height - bottomY);
+            }
+        },
+
+        update: function() {
+            if (frames % 120 === 0) {
+                let maxTop = canvas.height - this.gap - 100;
+                let topHeight = Math.floor(Math.random() * (maxTop - 50 + 1)) + 50;
+                this.items.push({
+                    x: canvas.width,
+                    top: topHeight,
+                    passed: false
+                });
+            }
+
+            for (let i = 0; i < this.items.length; i++) {
+                let p = this.items[i];
+                p.x -= this.dx;
+
+                // Collision Logic
+                if (bird.x + 15 > p.x && bird.x - 15 < p.x + this.width) {
+                    if ((bird.y - 15 < p.top) || (bird.y + 15 > p.top + this.gap)) {
+                        gameOver();
+                    }
+                }
+
+                // Score Logic
+                if (p.x + this.width < bird.x && !p.passed) {
+                    score++;
+                    document.getElementById('score').innerText = score;
+                    p.passed = true;
+                    if(score % 5 === 0) this.dx += 0.5;
+                }
+
+                // Remove off-screen pipes
+                if (p.x + this.width <= 0) {
+                    this.items.shift();
+                    i--;
+                }
+            }
+        }
+    };
+
+    // --- Functions ---
+
+    function uploadCharacter(input) {
+        if (input.files && input.files[0]) {
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                bird.img.src = e.target.result;
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    function startGame() {
+        document.getElementById('start-screen').style.display = 'none';
+        document.getElementById('game-over-screen').style.display = 'none';
+        score = 0;
+        document.getElementById('score').innerText = score;
+        
+        bird.y = canvas.height / 2;
+        bird.velocity = 0;
+        pipes.items = [];
+        frames = 0;
+        pipes.dx = 3;
+        
+        isRunning = true;
+        isGameOver = false;
+
+        music.volume = 0.3;
+        music.play().catch(e => console.log("Audio play failed:", e));
+        
+        loop();
+    }
+
+    function gameOver() {
+        if (isGameOver) return; // Prevent double triggering
+
+        isRunning = false;
+        isGameOver = true;
+        document.getElementById('game-over-screen').style.display = 'block';
+        document.getElementById('final-score').innerText = "Score: " + score;
+        
+        // Stop Music
+        music.pause();
+        music.currentTime = 0;
+
+        // Play Die Sound
+        dieSound.currentTime = 0; // Reset sound to start
+        dieSound.play().catch(e => console.log("Die sound failed:", e));
+    }
+
+    function resetGame() {
+        startGame();
+    }
+
+    // --- The Recursive Game Loop ---
+    // Since you are learning recursion:
+    // This function calls itself repeatedly using requestAnimationFrame.
+    // It is the "Base Case" of recursion when !isRunning (it stops calling itself).
+    function loop() {
+        if (!isRunning) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        bird.update();
+        bird.draw();
+        
+        pipes.update();
+        pipes.draw();
+
+        frames++;
+
+        requestAnimationFrame(loop);
+    }
+
+    // --- Inputs ---
+    function action() {
+        if (isRunning) {
+            bird.flap();
+        }
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') action();
+    });
+    
+    window.addEventListener('mousedown', (e) => {
+        if(e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
+            action();
+        }
+    });
+    
+    window.addEventListener('touchstart', (e) => {
+        if(e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
+            e.preventDefault();
+            action();
+        }
+    }, {passive: false});
+
+    bird.draw();
+
+</script>
+</body>
+</html>
